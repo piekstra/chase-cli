@@ -1,0 +1,5 @@
+Transaction Date,Post Date,Description,Category,Type,Amount,Memo
+07/15/2026,07/16/2026,ACME FAMILY CLINIC,Health & Wellness,Sale,-142.10,
+not-a-date,07/16/2026,ACME DENTAL GROUP,Health & Wellness,Sale,-50.00,
+07/14/2026,07/15/2026,,Home,Sale,-385.00,
+07/13/2026,07/14/2026,ACME HARDWARE,Shopping,Sale,twelve dollars,

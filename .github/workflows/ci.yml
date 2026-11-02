@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  verify:
+    # Linux only, deliberately. This CLI is offline and credential-free — it
+    # never opens the macOS Keychain — so a macOS runner (10x the cost) would
+    # exercise nothing extra. Add one back the day it grows a credential.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: linux deps
+        # dbus dev headers for the secret-service keyring backend, pulled in
+        # transitively by pk-cli-auth. Nothing here uses a keychain at runtime.
+        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config
+      - name: fmt
+        run: cargo fmt --all -- --check
+      - name: clippy
+        run: cargo clippy --all-targets --locked -- -D warnings
+      - name: test
+        run: cargo test --all --locked
+      - name: "smoke (offline: no network, no credential, synthetic fixtures)"
+        run: |
+          cargo build --release --locked
+          ./target/release/chse --version
+          ./target/release/chse --help > /dev/null
+          ./target/release/chse info > /dev/null
+          ./target/release/chse auth status > /dev/null
+          ./target/release/chse --json -q import csv tests/fixtures/card-modern.csv > /dev/null
+          ./target/release/chse --json -q import scan tests/fixtures > /dev/null
+
+  audit:
+    name: cargo audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@cargo-audit
+      - run: cargo audit
+      - name: cargo-deny
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check

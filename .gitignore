@@ -1,0 +1,13 @@
+/target
+**/*.rs.bk
+
+# Never commit real exports. Fixtures under tests/fixtures/ are synthetic and
+# are added deliberately; anything else CSV/PDF-shaped stays out of the repo.
+/scratch/
+*.pdf
+/*.csv
+/*.CSV
+/*.QFX
+/*.qfx
+/*.ofx
+/*.qbo

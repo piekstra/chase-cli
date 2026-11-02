@@ -1,0 +1,11 @@
+Transaction Date,Post Date,Description,Category,Type,Amount,Memo
+07/18/2026,07/19/2026,EXAMPLE PHARMACY #123,Health & Wellness,Sale,-24.99,
+07/15/2026,07/16/2026,ACME FAMILY CLINIC,Health & Wellness,Sale,-142.10,Annual physical
+07/14/2026,07/15/2026,"ACME HVAC SERVICES, INC",Home,Sale,"-1,250.00",Rental unit AC repair
+07/12/2026,07/14/2026,ACME PLUMBING LLC,Home,Sale,-385.00,Rental unit water heater
+07/11/2026,07/12/2026,EXAMPLE LAWN &amp; GARDEN CO,Home,Sale,-95.00,
+07/09/2026,07/10/2026,ACME DENTAL GROUP,Health & Wellness,Sale,-320.00,
+07/08/2026,07/09/2026,ACME HARDWARE,Shopping,Sale,-47.85,
+07/05/2026,07/06/2026,ACME FAMILY CLINIC,Health & Wellness,Return,45.00,Refund overpayment
+07/03/2026,07/03/2026,Payment Thank You - Web,,Payment,2500.00,
+07/01/2026,07/01/2026,ANNUAL MEMBERSHIP FEE,Fees & Adjustments,Fee,-95.00,
