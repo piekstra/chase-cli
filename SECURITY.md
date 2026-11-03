@@ -33,7 +33,10 @@ there is yours to choose.
 
 No result or error carries the folder's own path. A run of 8 or more digits in a
 description, memo, category, type, check number or file name is masked to its last four,
-before any filter sees it, so a filter cannot test digits a result would not show. A row
+before any filter sees it, so a filter cannot test digits a result would not show. The one
+exception is an 8-digit run in a file name that reads as a date, which is left as a date
+stamp: Chase stamps dates into its export names, and masked, every export would look alike.
+An identifier of that shape in a file name does reach Claude. A row
 that cannot be parsed is counted and its contents are not repeated. Shorter identifiers
 and any other text in your files do reach Claude, and a description can name a person or a
 place. No tool can move money or change anything: nothing here talks to Chase. The server

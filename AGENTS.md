@@ -74,8 +74,9 @@ mechanism belongs in `cli-common`, not copy-pasted here.
 `src/mcp.rs` serves `chase_transactions` and `chase_exports` over the parser the commands
 use (cli-common `DESIGN.md` §1.9). Three rules hold there, and `src/mcp/tests.rs` holds
 them to it: no tool takes a path, no result carries the inbox's own path or a run of 8+
-digits, and a skipped row is counted and never quoted. New text from a file goes through
-`mask_digit_runs`. Tools stay read-only. Adding a tool also changes the tool list in
+digits, except an 8-digit run in a file name that reads as a date, which is left as a date
+stamp, and a skipped row is counted and never quoted. New text from a file goes through
+`mask_digit_runs`, and a file name through `shown_name`. Tools stay read-only. Adding a tool also changes the tool list in
 `packaging/mcpb/manifest.json`, which `tests/packaging.rs` checks, and in
 `claude-plugins`.
 

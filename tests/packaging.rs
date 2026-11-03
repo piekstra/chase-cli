@@ -98,5 +98,6 @@ fn every_platform_runs_mcp_with_the_chosen_folder_and_no_credential() {
     }
     let text = m["long_description"].as_str().unwrap();
     assert!(text.contains("goes to Claude"), "{text}");
+    assert!(text.contains("left as a date stamp"), "{text}");
     assert_eq!(m["license"], "MIT");
 }

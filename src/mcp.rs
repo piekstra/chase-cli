@@ -13,7 +13,8 @@
 //! user configured, or `$CHSE_INBOX`, on each call. A `file` argument is compared
 //! with the names found there and never opened. No result carries the inbox's own
 //! path, and a run of 8 or more digits in text from a file is masked, since a
-//! checking export's descriptions can carry account numbers.
+//! checking export's descriptions can carry account numbers, except an 8-digit run in a
+//! file name that reads as a date, which is left as a date stamp.
 //!
 //! Listing the tools reads no file and no credential. The only secret this binary
 //! can touch is the bearer token of `mcp --http`, held by `pk-cli-mcp`. So nothing
