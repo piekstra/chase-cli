@@ -43,10 +43,16 @@ pub const EXPORTS_TOOL: &str = "chase_exports";
 /// instructions take it as what to ask of the user when access is missing.
 const SET_INBOX: &str = "chse config set inbox <folder>";
 
-/// The fix when there is nothing to read.
+/// The fix for a folder that came from the config.
 const POINT_AT_A_FOLDER: &str = "Ask the user to download their activity from chase.com as CSV \
                                  into a folder and run `chse config set inbox <folder>` in a \
-                                 terminal, then call the tool again";
+                                 terminal with the folder's full path, then call the tool again";
+
+/// The fix for a folder that came from `$CHSE_INBOX`, which the Claude Desktop extension
+/// sets. `config set` changes nothing while that variable is set.
+const CHANGE_THE_SETTING: &str = "Ask the user to choose the folder again, by its full path, in \
+                                  this server's settings in their client (for Claude Desktop, \
+                                  the extension's settings), then call the tool again";
 
 /// The fix when the inbox is there and holds no export.
 const DOWNLOAD_ONE: &str = "Ask the user to download their activity from chase.com as CSV into \
@@ -55,9 +61,15 @@ const DOWNLOAD_ONE: &str = "Ask the user to download their activity from chase.c
 /// A digit run this long is the shape of an account, card or routing number.
 const LONG_DIGIT_RUN: usize = 8;
 
+/// A folder to read, and how a person changes it if it is no use.
+pub struct Located {
+    pub dir: PathBuf,
+    pub fix: &'static str,
+}
+
 /// Where the tools read exports from. Asked once per call.
 pub trait Inbox {
-    fn dir(&self) -> Result<PathBuf, ToolError>;
+    fn dir(&self) -> Result<Located, ToolError>;
 }
 
 /// The inbox a person chose: `$CHSE_INBOX`, which the Claude Desktop extension sets
@@ -72,22 +84,35 @@ impl ConfiguredInbox {
     }
 }
 
+/// A relative path would mean whatever folder the client started the server in, so
+/// the same setting would read different files from project to project. A quoted
+/// `~/Drive/inbox` lands here too, since nothing expands it. The value is not repeated.
+fn absolute(dir: PathBuf, fix: &'static str) -> Result<Located, ToolError> {
+    if dir.is_absolute() {
+        Ok(Located { dir, fix })
+    } else {
+        Err(ToolError::not_found("the inbox folder is not a full path").with_fix(fix))
+    }
+}
+
 impl Inbox for ConfiguredInbox {
-    fn dir(&self) -> Result<PathBuf, ToolError> {
+    fn dir(&self) -> Result<Located, ToolError> {
         if let Some(dir) = std::env::var_os("CHSE_INBOX").filter(|d| !d.is_empty()) {
-            return Ok(PathBuf::from(dir));
+            return absolute(PathBuf::from(dir), CHANGE_THE_SETTING);
         }
         let store = ConfigStore::new(BIN).with_override(self.config_path.clone());
         let cfg: Config = store.load().map_err(|_| {
             ToolError::other("the chse config file cannot be read")
                 .with_fix("Ask the user to run `chse config show` in a terminal and repair it")
         })?;
-        cfg.inbox
+        let dir = cfg
+            .inbox
             .filter(|d| !d.trim().is_empty())
             .map(PathBuf::from)
             .ok_or_else(|| {
                 ToolError::not_found("no inbox folder is configured").with_fix(POINT_AT_A_FOLDER)
-            })
+            })?;
+        absolute(dir, POINT_AT_A_FOLDER)
     }
 }
 
@@ -127,9 +152,39 @@ fn mask_digit_runs(text: &str) -> String {
     out
 }
 
+/// A file's name as a result shows it. Chase stamps dates into its export names, and an
+/// 8-digit date is no account number, so those stay: masked, every export would look
+/// alike. Any other long run is masked.
+fn shown_name(name: &str) -> String {
+    let mut out = String::with_capacity(name.len());
+    let mut rest = name;
+    while let Some(start) = rest.find(|c: char| c.is_ascii_digit()) {
+        out.push_str(&rest[..start]);
+        let tail = &rest[start..];
+        let end = tail
+            .find(|c: char| !c.is_ascii_digit())
+            .unwrap_or(tail.len());
+        let run = &tail[..end];
+        if is_date_stamp(run) {
+            out.push_str(run);
+        } else {
+            out.push_str(&mask_digit_runs(run));
+        }
+        rest = &tail[end..];
+    }
+    out.push_str(rest);
+    out
+}
+
+fn is_date_stamp(run: &str) -> bool {
+    run.len() == 8
+        && (run.starts_with("19") || run.starts_with("20"))
+        && dates::parse_iso(&format!("{}-{}-{}", &run[..4], &run[4..6], &run[6..])).is_ok()
+}
+
 /// One Chase-shaped file. `parsed` is `None` when it could not be read to the end.
 struct Export {
-    /// Relative to the inbox, masked.
+    /// Relative to the inbox, masked, and unique among the exports read.
     name: String,
     parsed: Option<parser::ParsedFile>,
 }
@@ -140,26 +195,46 @@ struct Reading {
     exports: Vec<Export>,
 }
 
-/// Read every Chase-shaped CSV in `dir`. Errors name the inbox, not its path: where a
-/// person keeps their files is no part of an answer about their spending.
-fn read_inbox(dir: &std::path::Path, recursive: bool) -> Result<Reading, ToolError> {
+/// Read every Chase-shaped CSV in the folder. Errors name the inbox, not its path: where
+/// a person keeps their files is no part of an answer about their spending.
+///
+/// A file that cannot be opened may be an export, so it is kept as one that could not be
+/// read, and an answer says it is missing. A stray binary file with a `.csv` name is
+/// just not Chase's. Masking can give two files one name, and `file` has to select one,
+/// so a later one gets a suffix in the sorted order `find_csvs` keeps.
+fn read_inbox(inbox: &Located, recursive: bool) -> Result<Reading, ToolError> {
+    let fix = inbox.fix;
+    let dir = inbox.dir.as_path();
     let candidates = scan::find_csvs(dir, recursive).map_err(|e| match e {
         CliError::NotFound(_) => {
-            ToolError::not_found("the inbox folder does not exist").with_fix(POINT_AT_A_FOLDER)
+            ToolError::not_found("the inbox folder does not exist").with_fix(fix)
         }
         CliError::Usage(_) => {
-            ToolError::not_found("the inbox is a file, not a folder").with_fix(POINT_AT_A_FOLDER)
+            ToolError::not_found("the inbox is a file, not a folder").with_fix(fix)
         }
-        _ => ToolError::other("the inbox folder cannot be read").with_fix(POINT_AT_A_FOLDER),
+        _ => ToolError::other("the inbox folder cannot be read").with_fix(fix),
     })?;
-    let exports = candidates
-        .iter()
-        .filter(|p| scan::classify(p).is_some())
-        .map(|p| Export {
-            name: mask_digit_runs(&display_path(p, dir)),
-            parsed: parser::parse_file(p).ok(),
-        })
-        .collect();
+    let mut exports = Vec::new();
+    let mut taken = HashSet::new();
+    for path in &candidates {
+        let readable = match scan::probe(path) {
+            Ok(Some(_)) => true,
+            Ok(None) => continue,
+            Err(e) if e.kind() == std::io::ErrorKind::InvalidData => continue,
+            Err(_) => false,
+        };
+        let shown = shown_name(&display_path(path, dir));
+        let mut name = shown.clone();
+        let mut nth = 1;
+        while !taken.insert(name.clone()) {
+            nth += 1;
+            name = format!("{shown}~{nth}");
+        }
+        exports.push(Export {
+            name,
+            parsed: readable.then(|| parser::parse_file(path).ok()).flatten(),
+        });
+    }
     Ok(Reading {
         csv_files: candidates.len(),
         exports,
@@ -310,7 +385,7 @@ fn transaction_item(t: Transaction, file: &str, detailed: bool) -> TransactionIt
         description: t.description,
         amount: t.amount.amount,
         kind: t.kind,
-        category: mask_text(t.category),
+        category: t.category,
         post_date: t.post_date.filter(|_| detailed),
         memo: mask_text(t.memo).filter(|_| detailed),
         chase_type: mask_text(t.chase_type).filter(|_| detailed),
@@ -341,7 +416,7 @@ pub struct ExportItem {
     /// Relative to the inbox.
     pub file: String,
     /// card-modern, card-legacy or checking. Absent when unreadable.
-    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub variant: Option<String>,
     pub transactions: u64,
     /// Rows that could not be read. Absent when none.
@@ -353,7 +428,7 @@ pub struct ExportItem {
     /// The latest date in the file.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub until: Option<String>,
-    /// True when the file has a Chase header and cannot be read to the end.
+    /// True when the file may be an export and cannot be read to the end.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub unreadable: Option<bool>,
 }
@@ -362,7 +437,7 @@ pub struct ExportItem {
 pub struct ExportsOut {
     /// CSV files found in the inbox, Chase's or not.
     pub csv_files: usize,
-    /// Those with a Chase header.
+    /// Those with a Chase header, or that could not be opened to tell.
     pub chase_exports: usize,
     #[serde(flatten)]
     pub page: Page<ExportItem>,
@@ -399,7 +474,7 @@ impl<I: Inbox> Toolset for ChaseTools<I> {
             ToolDef::read(
                 EXPORTS_TOOL,
                 "Chase CSV exports available",
-                "Lists the Chase CSV exports in the user's inbox folder: each file's name, type, \
+                "Lists the Chase CSV exports in the user's inbox folder: each file's name, variant, \
                  row count and date span. Use it to see which accounts and periods are covered, \
                  or why a total looks short. Files without a Chase header are counted and not \
                  read.",
@@ -461,10 +536,17 @@ impl<I: Inbox> ChaseTools<I> {
             }
         }
 
-        // Which exports hold each row, before any filter, so a duplicate is one
-        // whichever row a filter happens to keep.
+        // Which of the exports being read hold each row, before any other filter, so a
+        // duplicate is one whichever row a filter happens to keep, and a row in an export
+        // `file` left out adds nothing to a total.
+        let selected = |e: &Export| file.is_none_or(|f| f == e.name);
         let mut holders: HashMap<RowKey, HashSet<usize>> = HashMap::new();
-        for (i, export) in reading.exports.iter().enumerate() {
+        for (i, export) in reading
+            .exports
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| selected(e))
+        {
             for t in export.parsed.iter().flat_map(|p| &p.transactions) {
                 holders.entry(row_key(t)).or_default().insert(i);
             }
@@ -487,7 +569,7 @@ impl<I: Inbox> ChaseTools<I> {
                     data_through = Some(t.date.clone());
                 }
             }
-            if file.is_none_or(|f| f == export.name) {
+            if selected(export) {
                 for t in &parsed.transactions {
                     rows.push((t.clone(), export.name.as_str()));
                 }
@@ -507,6 +589,7 @@ impl<I: Inbox> ChaseTools<I> {
             // Text is masked before a filter sees it, so a filter cannot be used to
             // test digits a result would not show.
             t.description = mask_digit_runs(&t.description);
+            t.category = mask_text(t.category);
             let keep = window.since.as_deref().is_none_or(|s| t.date.as_str() >= s)
                 && window.until.as_deref().is_none_or(|u| t.date.as_str() <= u)
                 && description.is_none_or(|d| contains(&t.description, d))

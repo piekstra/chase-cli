@@ -24,7 +24,8 @@ Exports hold the real activity of your accounts, so choose the folder with that 
 
 No tool takes a path. The tools read the `inbox` in your config, or `$CHSE_INBOX`, which
 the Claude Desktop extension sets from the folder picked in its settings; the config comes
-from `--config` or `~/.config/chse`, and nothing in a working directory is read. A `file`
+from `--config` or `~/.config/chse`. A folder that is not a full path is refused, from
+either source, so nothing in a working directory is read. A `file`
 argument is compared with the names found in that folder and never opened, and an argument
 the schema does not name is refused, so what a model passes cannot read another file. A
 symbolic link in that folder is followed, as the `import` commands follow it; what you link

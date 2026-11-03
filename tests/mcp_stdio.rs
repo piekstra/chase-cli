@@ -177,6 +177,51 @@ fn the_extensions_folder_wins_over_the_config() {
     assert!(text(&call).contains("card-modern.csv"), "{call}");
 }
 
+/// A relative folder would mean whatever folder the client started the server in.
+#[test]
+fn a_relative_inbox_is_refused_from_either_source_without_repeating_it() {
+    for (test, config, env) in [
+        ("relative-config", Some("tests/fixtures"), None),
+        ("tilde-config", Some("~/tests/fixtures"), None),
+        ("relative-env", None, Some("tests/fixtures")),
+    ] {
+        let mut command = chse(test, config);
+        command.current_dir(env!("CARGO_MANIFEST_DIR"));
+        if let Some(env) = env {
+            command.env("CHSE_INBOX", env);
+        }
+        let mut s = Server::start(command);
+        s.initialize();
+        let call = s.request(
+            1,
+            "tools/call",
+            json!({"name": "chase_exports", "arguments": {}}),
+        );
+        assert_eq!(call["result"]["isError"], true, "{call}");
+        assert!(text(&call).contains("not a full path"), "{call}");
+        assert!(!text(&call).contains("tests/fixtures"), "{call}");
+    }
+}
+
+/// `config set` changes nothing while the extension's variable is set, so that is not
+/// what a folder from the variable is told to do.
+#[test]
+fn a_folder_from_the_extension_is_fixed_in_its_settings() {
+    let mut command = chse("env-moved", Some(&fixtures()));
+    command.env("CHSE_INBOX", "/nonexistent/chse-inbox");
+    let mut s = Server::start(command);
+    s.initialize();
+    let call = s.request(
+        1,
+        "tools/call",
+        json!({"name": "chase_exports", "arguments": {}}),
+    );
+    assert_eq!(call["result"]["isError"], true, "{call}");
+    assert!(text(&call).contains("settings"), "{call}");
+    assert!(!text(&call).contains("chse config set"), "{call}");
+    assert!(!text(&call).contains("nonexistent"), "{call}");
+}
+
 #[test]
 fn with_no_inbox_a_call_asks_for_one_and_a_later_setting_applies() {
     let command = chse("later", None);

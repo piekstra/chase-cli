@@ -66,18 +66,26 @@ fn collect(dir: &Path, recursive: bool, out: &mut Vec<PathBuf>) -> Result<(), Cl
 /// export" — including unreadable/binary files, which we skip rather than fail
 /// on, since a scan should survive whatever else is sitting in the folder.
 pub fn classify(path: &Path) -> Option<Variant> {
-    let file = std::fs::File::open(path).ok()?;
+    probe(path).ok().flatten()
+}
+
+/// [`classify`], for a caller that has to tell "not a Chase export" from "could not
+/// read it to find out". `read_line` on invalid UTF-8 is an `InvalidData` error.
+pub fn probe(path: &Path) -> std::io::Result<Option<Variant>> {
+    let file = std::fs::File::open(path)?;
     let mut first_line = String::new();
-    // `read_line` on invalid UTF-8 errors out, which is the answer we want.
-    BufReader::new(file).read_line(&mut first_line).ok()?;
+    BufReader::new(file).read_line(&mut first_line)?;
 
     let line = first_line.trim_start_matches('\u{feff}');
     let mut reader = csv::ReaderBuilder::new()
         .flexible(true)
         .trim(csv::Trim::All)
         .from_reader(line.as_bytes());
-    let headers: Vec<String> = reader.headers().ok()?.iter().map(String::from).collect();
-    format::detect(&headers)
+    let Ok(headers) = reader.headers() else {
+        return Ok(None);
+    };
+    let headers: Vec<String> = headers.iter().map(String::from).collect();
+    Ok(format::detect(&headers))
 }
 
 #[cfg(test)]

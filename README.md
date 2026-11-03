@@ -92,30 +92,34 @@ one folder.
 | Tool | Answers |
 | --- | --- |
 | `chase_transactions` | What was spent over a period, on what, at which merchant? Rows newest first, with the count and net total of everything matching across pages, narrowed by `since`/`until`, `description`, `category`, `kind` or `file` |
-| `chase_exports` | Which accounts and dates do my files cover? Each export's name, type, row count and date span, and how many CSV files were not Chase's |
+| `chase_exports` | Which accounts and dates do my files cover? Each export's `file` (the name relative to the folder, the `path` of `import scan --json`), `variant`, row count and date span, and how many CSV files were not Chase's |
 
 No tool can move money or change anything: there is no Chase account behind them, only
 your files. No tool takes a path. They read the folder you set with `chse config set
 inbox <folder>`, read again on each call, so a new download or a new setting applies at
-once. `file` picks from the names `chase_exports` gives, and `recursive` reaches that
-folder's subfolders.
+once. It has to be a full path: a relative one would mean whatever folder Claude started
+the server in, so the tools refuse it (the `import` commands still take one). `file` picks
+from the names `chase_exports` gives, and `recursive` reaches that folder's subfolders.
 
 An answer says what it could not cover. `data_through` is the last date in your files,
-and nothing later is known. A row or a whole export that could not be read makes
-`complete` false, with a count or the file's name, and never the row's contents. A row
-identical to one in another export is counted in `possible_duplicates`, because it may be
-one transaction downloaded twice, or two that look alike on different accounts. Rows are
-not removed, so `total_amount` counts both; `file` reads one export.
+and nothing later is known. A row or a whole export that could not be read, or a file that
+could not even be opened, makes `complete` false, with a count or the file's name, and
+never the row's contents. A row identical to one in another export is counted in
+`possible_duplicates`, because it may be one transaction downloaded twice, or two that look
+alike on different accounts. Rows are not removed, so `total_amount` counts both; `file`
+reads one export.
 
 A run of 8 or more digits in a description, memo or file name comes back as its last four
-(`****1234`), since a checking export's descriptions can carry an account number. Results
+(`****1234`), since a checking export's descriptions can carry an account number. A date
+stamp in a file name stays, and two names that mask alike get a suffix (`~2`). Results
 are concise by default (`response_format: "detailed"` adds the post date, memo, Chase's
 type, the running balance, the check number and the file), 25 rows a page with a cursor
 for more. Descriptions come from Chase and other parties; the server tells Claude to
 treat them as data, not instructions.
 
 **Set the folder first.** [Download CSV activity](#getting-the-data-out-of-chase) into a
-folder and run `chse config set inbox <folder>`. Until then, the tools say so.
+folder and run `chse config set inbox <folder>`, with its full path. Until then, the tools
+say so.
 
 **Claude Code.** Add the `chase-cli` plugin from the
 [piekstra plugin marketplace](https://github.com/piekstra/claude-plugins):

@@ -12,8 +12,11 @@ use super::*;
 struct At(PathBuf);
 
 impl Inbox for At {
-    fn dir(&self) -> Result<PathBuf, ToolError> {
-        Ok(self.0.clone())
+    fn dir(&self) -> Result<Located, ToolError> {
+        Ok(Located {
+            dir: self.0.clone(),
+            fix: POINT_AT_A_FOLDER,
+        })
     }
 }
 
@@ -65,7 +68,7 @@ fn the_tools_conform_to_the_profile() {
 fn listing_the_tools_reads_nothing() {
     struct Refuses;
     impl Inbox for Refuses {
-        fn dir(&self) -> Result<PathBuf, ToolError> {
+        fn dir(&self) -> Result<Located, ToolError> {
             panic!("listing the tools must not read the config");
         }
     }
@@ -287,9 +290,12 @@ fn a_row_in_two_exports_is_flagged_and_two_in_one_are_not() {
         "{out}"
     );
 
+    // Narrowed to one export, nothing is counted twice, whatever the other one holds.
     let out = ok(&tools, TRANSACTIONS_TOOL, json!({"file": "june.csv"}));
     assert_eq!(out["matched"], 1);
     assert_eq!(out["total_amount"], "4.00");
+    assert!(out.get("possible_duplicates").is_none(), "{out}");
+    assert!(out.get("note").is_none(), "{out}");
 
     let tools = inbox(
         "same-day-twice",
@@ -333,6 +339,71 @@ fn a_long_digit_run_is_masked_and_a_filter_cannot_find_it() {
 
     let out = ok(&tools, EXPORTS_TOOL, json!({}));
     assert_eq!(out["items"][0]["file"], "statement ****1234.csv");
+}
+
+/// The same dummy digits in a category: it is masked before the filter sees it too.
+#[test]
+fn a_category_cannot_be_used_to_test_digits_a_result_hides() {
+    let tools = inbox(
+        "category-masking",
+        &[(
+            "a.csv",
+            &format!("{CARD_HEADER}07/02/2026,07/02/2026,ACME,000000005678,Sale,-1.00,\n"),
+        )],
+    );
+    let out = ok(
+        &tools,
+        TRANSACTIONS_TOOL,
+        json!({"category": "000000005678"}),
+    );
+    assert_eq!(out["matched"], 0);
+    let out = ok(&tools, TRANSACTIONS_TOOL, json!({"category": "****5678"}));
+    assert_eq!(out["items"][0]["category"], "****5678");
+}
+
+/// A file name's date stamp is a date, and the rest of a long run is masked.
+#[test]
+fn a_file_name_keeps_its_date_stamps() {
+    assert_eq!(
+        shown_name("Chase1234_Activity20250101_20250131_20250201.CSV"),
+        "Chase1234_Activity20250101_20250131_20250201.CSV"
+    );
+    assert_eq!(
+        shown_name("statement 000000001234.csv"),
+        "statement ****1234.csv"
+    );
+    assert_eq!(shown_name("12345678.csv"), "****5678.csv");
+    assert_eq!(shown_name("20251399.csv"), "****1399.csv", "no 13th month");
+}
+
+/// Two dummy numbers with the same last four. `file` selects one of them, by the name
+/// `chase_exports` gives, so it can still take a double count apart.
+#[test]
+fn names_that_mask_alike_stay_apart() {
+    let row = |d: &str| format!("{CARD_HEADER}07/02/2026,07/02/2026,ACME {d},Home,Sale,-1.00,\n");
+    let tools = inbox(
+        "colliding-names",
+        &[
+            ("a 000000011234.csv", &row("ONE")),
+            ("a 000000021234.csv", &row("TWO")),
+        ],
+    );
+    let out = ok(&tools, EXPORTS_TOOL, json!({}));
+    let names: Vec<&str> = out["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|i| i["file"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, ["a ****1234.csv", "a ****1234.csv~2"]);
+
+    let out = ok(
+        &tools,
+        TRANSACTIONS_TOOL,
+        json!({"file": "a ****1234.csv~2"}),
+    );
+    assert_eq!(out["matched"], 1);
+    assert_eq!(out["items"][0]["description"], "ACME TWO");
 }
 
 #[test]
@@ -407,6 +478,51 @@ fn an_export_that_cannot_be_read_is_named_and_the_rest_still_answer() {
     assert_eq!(bad["unreadable"], true);
 }
 
+/// A permission-denied file, or a cloud-sync placeholder that fails offline, may be an
+/// export: it is not reported as someone else's CSV.
+#[cfg(unix)]
+#[test]
+fn a_file_that_cannot_be_opened_makes_an_answer_incomplete() {
+    use std::os::unix::fs::PermissionsExt;
+    let body = format!("{CARD_HEADER}07/02/2026,07/02/2026,ACME,Home,Sale,-1.00,\n");
+    let tools = inbox("unopenable", &[("good.csv", &body), ("locked.csv", &body)]);
+    let locked = tools.inbox.0.join("locked.csv");
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+    if std::fs::File::open(&locked).is_ok() {
+        return; // running as root, which no mode stops
+    }
+    let out = ok(&tools, TRANSACTIONS_TOOL, json!({}));
+    assert_eq!(out["complete"], false);
+    assert_eq!(out["matched"], 1);
+    assert!(
+        out["note"].as_str().unwrap().contains("locked.csv"),
+        "{out}"
+    );
+
+    let out = ok(&tools, EXPORTS_TOOL, json!({}));
+    assert_eq!(out["chase_exports"], 2);
+    let item = out["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|i| i["file"] == "locked.csv")
+        .unwrap();
+    assert_eq!(item["unreadable"], true);
+}
+
+/// A binary file named `.csv` is not an export, so it does not mark every answer short.
+#[test]
+fn a_stray_binary_file_is_just_not_chases() {
+    let body = format!("{CARD_HEADER}07/02/2026,07/02/2026,ACME,Home,Sale,-1.00,\n");
+    let tools = inbox("binary", &[("good.csv", &body)]);
+    std::fs::write(tools.inbox.0.join("stray.csv"), [0xff, 0xfe, 0x00, 0x80]).unwrap();
+    let out = ok(&tools, TRANSACTIONS_TOOL, json!({}));
+    assert_eq!(out["complete"], true);
+    let out = ok(&tools, EXPORTS_TOOL, json!({}));
+    assert_eq!(out["csv_files"], 2);
+    assert_eq!(out["chase_exports"], 1);
+}
+
 // ---- chase_exports ---------------------------------------------------------------
 
 #[test]
@@ -417,7 +533,7 @@ fn exports_name_each_file_its_type_and_span() {
         .iter()
         .find(|i| i["file"] == "card-modern.csv")
         .unwrap();
-    assert_eq!(modern["type"], "card-modern");
+    assert_eq!(modern["variant"], "card-modern");
     assert_eq!(modern["until"], "2026-07-18");
     assert!(modern["transactions"].as_u64().unwrap() > 0);
 
