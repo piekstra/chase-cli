@@ -18,9 +18,10 @@ env:
 
 jobs:
   verify:
-    # Linux only, deliberately. This CLI is offline and credential-free — it
-    # never opens the macOS Keychain — so a macOS runner (10x the cost) would
-    # exercise nothing extra. Add one back the day it grows a credential.
+    # Linux only, deliberately. This CLI is offline and holds no provider
+    # credential, and only `mcp --http` opens the keychain, for its bearer token,
+    # which pk-cli-mcp tests. A macOS runner (10x the cost) would exercise nothing
+    # extra. Add one back the day it grows a credential.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -30,7 +31,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: linux deps
         # dbus dev headers for the secret-service keyring backend, pulled in
-        # transitively by pk-cli-auth. Nothing here uses a keychain at runtime.
+        # transitively by pk-cli-auth and pk-cli-mcp. No test here uses a keychain.
         run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config
       - name: fmt
         run: cargo fmt --all -- --check
@@ -45,6 +46,7 @@ jobs:
           ./target/release/chse --help > /dev/null
           ./target/release/chse info > /dev/null
           ./target/release/chse auth status > /dev/null
+          ./target/release/chse mcp --list-tools > /dev/null
           ./target/release/chse --json -q import csv tests/fixtures/card-modern.csv > /dev/null
           ./target/release/chse --json -q import scan tests/fixtures > /dev/null
 

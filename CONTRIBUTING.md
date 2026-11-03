@@ -18,7 +18,7 @@ tag.
 
 ```sh
 make dev          # debug build, re-signed on macOS so keychain grants survive
-make test         # offline; no network, no credential, no real account
+make test         # offline; no network, no keychain, no real account
 make verify       # fmt-check + clippy + test + smoke — the CI gate
 make install      # then actually drive the installed binary
 ```

@@ -11,6 +11,7 @@ mod commands;
 mod config;
 mod dto;
 mod format;
+mod mcp;
 mod parser;
 mod scan;
 mod value;
@@ -25,6 +26,7 @@ use pk_cli_selfupdate::{SelfUpdateArgs, Updater};
 
 use commands::import::ImportCmd;
 use config::ConfigCmd;
+use mcp::{ChaseTools, ConfiguredInbox};
 
 const BIN: &str = "chse";
 const REPO: &str = "piekstra/chase-cli";
@@ -55,6 +57,13 @@ enum Command {
     /// Non-secret settings.
     #[command(subcommand)]
     Config(ConfigCmd),
+    /// Serve read-only tools over your Chase CSV exports to Claude over MCP.
+    ///
+    /// For Claude Code (`claude mcp add chase -- chse mcp`), Claude Desktop and any
+    /// MCP client. With --http, on 127.0.0.1 behind a bearer token, for your own
+    /// Cloudflare Worker (see README). The tools read only the configured `inbox`,
+    /// and no argument can name a path.
+    Mcp(pk_cli_mcp::McpArgs),
     /// Update to the latest release from GitHub.
     SelfUpdate(SelfUpdateArgs),
     /// Print a shell completion script.
@@ -77,6 +86,13 @@ fn main() {
 }
 
 fn run(cli: &Cli) -> Result<(), CliError> {
+    // Before the config is read: listing the tools reads no file, and a running
+    // server reads it on each call, so a later `config set` applies and a malformed
+    // file is one tool's error rather than no server.
+    if let Command::Mcp(args) = &cli.command {
+        let inbox = ConfiguredInbox::new(cli.config_path.clone());
+        return pk_cli_mcp::run(args, ChaseTools::new(inbox));
+    }
     let store = ConfigStore::new(BIN).with_override(cli.config_path.clone());
 
     match &cli.command {
@@ -90,13 +106,19 @@ fn run(cli: &Cli) -> Result<(), CliError> {
             Ok(())
         }
         Command::Config(cmd) => config::run(cmd, &store, &cli.common),
+        Command::Mcp(_) => unreachable!("served before the config is read"),
         Command::SelfUpdate(args) => Updater {
             repo: REPO.into(),
             binary: BIN.into(),
             target: env!("BUILD_TARGET").into(),
             current: env!("CARGO_PKG_VERSION").into(),
         }
-        .run(args, cli.common.json, cli.common.quiet),
+        .run_noting(
+            args,
+            cli.common.json,
+            cli.common.quiet,
+            &pk_cli_mcp::restart_note(BIN),
+        ),
         Command::Completions { shell } => {
             clap_complete::generate(*shell, &mut Cli::command(), BIN, &mut std::io::stdout());
             Ok(())
@@ -111,7 +133,7 @@ fn run(cli: &Cli) -> Result<(), CliError> {
                     method: "none".into(),
                     login_hint: None,
                 },
-                &["import"],
+                &["import", "mcp"],
             );
             output::json(&serde_json::to_value(&info).unwrap());
             Ok(())

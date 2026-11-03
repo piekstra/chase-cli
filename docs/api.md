@@ -115,7 +115,7 @@ exact string decimal — rather than a login that half-works.
 ### If a portal client is ever added
 
 It would be a behavior change to a CLI currently documented as read-only and
-credential-free, so it lands with: `auth login` / `logout` / `set-credential`,
+holding no Chase credential, so it lands with: `auth login` / `logout` / `set-credential`,
 `AuthMethod::BrowserSession`, `info.auth.required = true`, a macOS CI job for
 the keychain backend, and this section rewritten in the **same commit**.
 

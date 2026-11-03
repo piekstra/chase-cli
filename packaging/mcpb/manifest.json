@@ -1,0 +1,86 @@
+{
+  "manifest_version": "0.3",
+  "name": "chse",
+  "display_name": "Chase CSV exports (chse)",
+  "version": "0.2.0",
+  "description": "Read-only questions over the Chase CSV activity exports you download, through the open-source chse CLI.",
+  "long_description": "Ask Claude about the Chase card and bank activity you downloaded as CSV from chase.com: what was spent over a period, on what and at which merchant, and which accounts and dates your files cover. Two read-only tools: chase_transactions and chase_exports. There is no sign-in and no connection to Chase: the tools read only the CSV files in the folder you choose in these settings, so they know nothing later than your last download, and cannot move money or change anything at Chase. A long run of digits in a description, memo or file name is masked to its last four. What the tools return goes to Claude as part of your conversation. Unofficial; not affiliated with or endorsed by JPMorgan Chase & Co.",
+  "author": {
+    "name": "piekstra",
+    "url": "https://github.com/piekstra"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/piekstra/chase-cli"
+  },
+  "homepage": "https://github.com/piekstra/chase-cli",
+  "documentation": "https://github.com/piekstra/chase-cli#use-with-claude",
+  "support": "https://github.com/piekstra/chase-cli/issues",
+  "license": "MIT",
+  "keywords": [
+    "chase",
+    "csv",
+    "transactions",
+    "finance",
+    "read-only"
+  ],
+  "server": {
+    "type": "binary",
+    "entry_point": "server/chse",
+    "mcp_config": {
+      "command": "${__dirname}/server/chse",
+      "args": [
+        "mcp"
+      ],
+      "env": {
+        "CHSE_INBOX": "${user_config.inbox}"
+      },
+      "platform_overrides": {
+        "win32": {
+          "command": "${__dirname}/server/chse.exe",
+          "args": [
+            "mcp"
+          ],
+          "env": {
+            "CHSE_INBOX": "${user_config.inbox}"
+          }
+        },
+        "linux": {
+          "command": "${__dirname}/server/linux/chse",
+          "args": [
+            "mcp"
+          ],
+          "env": {
+            "CHSE_INBOX": "${user_config.inbox}"
+          }
+        }
+      }
+    }
+  },
+  "tools": [
+    {
+      "name": "chase_transactions",
+      "description": "Transactions from your Chase CSV exports, with the count and total of everything matching."
+    },
+    {
+      "name": "chase_exports",
+      "description": "The Chase CSV exports in your folder: each file's type, row count and date span."
+    }
+  ],
+  "tools_generated": false,
+  "user_config": {
+    "inbox": {
+      "type": "directory",
+      "title": "Folder of Chase CSV exports",
+      "description": "The folder you download Chase activity CSV files into. The tools read only this folder.",
+      "required": true
+    }
+  },
+  "compatibility": {
+    "platforms": [
+      "darwin",
+      "win32",
+      "linux"
+    ]
+  }
+}

@@ -37,8 +37,8 @@ clean:
 # `cargo install` ad-hoc signs, which gives the binary a *new* code identity
 # every time. macOS scopes keychain "Always Allow" grants to that identity, so
 # an unsigned reinstall silently revokes them and the next run prompts again.
-# This CLI stores no secret today, but it is signed on the same terms as the
-# rest of the family so that stays true if it ever gains a credential.
+# The one secret this CLI can store is the bearer token of `mcp --http`, which is
+# why it is signed on the same terms as the rest of the family.
 install: SIGN_TARGET = $${CARGO_INSTALL_ROOT:-$$HOME/.cargo}/bin/$(BIN)
 install:
 	$(CARGO) install --path . --force --locked
@@ -55,6 +55,7 @@ smoke: release
 	./target/release/$(BIN) --help > /dev/null
 	./target/release/$(BIN) info > /dev/null
 	./target/release/$(BIN) auth status > /dev/null
+	./target/release/$(BIN) mcp --list-tools > /dev/null
 	./target/release/$(BIN) --json -q import csv tests/fixtures/card-modern.csv > /dev/null
 	./target/release/$(BIN) --json -q import scan tests/fixtures > /dev/null
 
