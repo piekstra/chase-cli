@@ -135,6 +135,19 @@ fn completions_render_for_each_shell() {
 }
 
 #[test]
+fn no_color_in_the_environment_never_fails_a_command() {
+    // Any non-empty NO_COLOR disables color, per no-color.org. Read as a
+    // boolean flag, NO_COLOR=1 was a usage error on every command.
+    for v in ["1", "true", "0", ""] {
+        chse()
+            .env("NO_COLOR", v)
+            .args(["completions", "bash"])
+            .assert()
+            .success();
+    }
+}
+
+#[test]
 fn config_roundtrips_through_an_explicit_path() {
     let path = std::env::temp_dir().join("chse-surface-tests/explicit-config.json");
     let _ = std::fs::remove_file(&path);
