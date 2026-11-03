@@ -186,7 +186,7 @@ fn resolve_dir(arg: Option<&Path>, store: &ConfigStore) -> Result<PathBuf, CliEr
 
 /// Paths in the report are relative to the scanned root when possible, so the
 /// output doesn't leak the full home-directory layout into a shared log.
-fn display_path(path: &Path, root: &Path) -> String {
+pub fn display_path(path: &Path, root: &Path) -> String {
     path.strip_prefix(root)
         .unwrap_or(path)
         .display()

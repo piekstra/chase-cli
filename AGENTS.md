@@ -8,7 +8,7 @@ A `piekstra-cli/1` family CLI (binary `chse`) that parses Chase's own CSV
 activity exports into family transaction DTOs. It is a thin layer over the
 shared `pk-cli-*` crates from
 [`cli-common`](https://github.com/piekstra/cli-common), pinned to tag
-**v0.15.1**. Read that repo's `DESIGN.md`, `conformance.md`, and `PROFILES.md`
+**v0.21.0**. Read that repo's `DESIGN.md`, `conformance.md`, and `PROFILES.md`
 before changing the surface — do not reconstruct the spec from memory.
 
 ## The two rules that matter most here
@@ -69,6 +69,17 @@ easy to duplicate by accident: `pk_cli_core::dates` (`parse_mm_slash_dd_yyyy`,
 its exit codes, `ConfigStore`, `AuthStatus`, `Updater`. A genuinely reusable
 mechanism belongs in `cli-common`, not copy-pasted here.
 
+## The MCP server
+
+`src/mcp.rs` serves `chase_transactions` and `chase_exports` over the parser the commands
+use (cli-common `DESIGN.md` §1.9). Three rules hold there, and `src/mcp/tests.rs` holds
+them to it: no tool takes a path, no result carries the inbox's own path or a run of 8+
+digits, except an 8-digit run in a file name that reads as a date, which is left as a date
+stamp, and a skipped row is counted and never quoted. New text from a file goes through
+`mask_digit_runs`, and a file name through `shown_name`. Tools stay read-only. Adding a tool also changes the tool list in
+`packaging/mcpb/manifest.json`, which `tests/packaging.rs` checks, and in
+`claude-plugins`.
+
 ## Tests
 
 `cargo test --all` — fully offline, no mocking library.
@@ -80,6 +91,9 @@ mechanism belongs in `cli-common`, not copy-pasted here.
 - `tests/fixture_shapes.rs` — contract tests over the synthetic fixtures,
   asserting the fields the table views actually read, plus the fixture-data
   policy
+- `src/mcp/tests.rs` — the tools, in process, over those fixtures and scratch folders
+- `tests/mcp_stdio.rs`, `tests/mcp_http.rs` — the real binary over each transport
+- `tests/packaging.rs` — the `.mcpb` manifest against the binary it packages
 
 Tests redirect `XDG_CONFIG_HOME` and use the OS temp dir, so they never read or
 clobber a developer's real `chse` config or inbox.
@@ -87,10 +101,13 @@ clobber a developer's real `chse` config or inbox.
 ## Shipping
 
 `make verify` (fmt-check + clippy + test + smoke) is the gate; CI runs the same
-on **Linux only** — this CLI is offline and credential-free, so a macOS runner
-would exercise nothing extra. Release is automatic: bump `version` in
-`Cargo.toml`, merge to `main`, and the workflow tags and publishes
-`chse-<target>.tar.gz` assets that `self-update` can find.
+on **Linux only** — this CLI holds no provider credential, and only `mcp --http`
+opens a keychain, for its bearer token, so a macOS runner would exercise nothing
+extra. To release: bump `version` in `Cargo.toml` and
+`packaging/mcpb/manifest.json`, add to `CHANGELOG.md`, merge, and push a `v<version>`
+tag. The workflow builds `chse-<target>.tar.gz` assets that `self-update` can find and
+the `.mcpb`, and publishes the release once all of them are there. A pull request that
+touches the dependencies or the packaging runs the same builds as a dry run.
 
 Done means installed and driven, not compiled — `make install` and run the real
 binary across the surface, including `--json` and the error paths.
