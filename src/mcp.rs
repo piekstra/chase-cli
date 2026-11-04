@@ -26,7 +26,8 @@ use std::path::PathBuf;
 use pk_cli_config::ConfigStore;
 use pk_cli_core::{dates, CliError, Money, RangeArgs};
 use pk_cli_mcp::{
-    parse_args, ListArgs, Page, PageRequest, Server, ToolDef, ToolError, ToolOutput, Toolset,
+    parse_args, ListArgs, Order, Page, PositionKey, PositionRequest, Server, ToolDef, ToolError,
+    ToolOutput, Toolset,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -464,7 +465,7 @@ impl<I: Inbox> Toolset for ChaseTools<I> {
             ToolDef::read(
                 TRANSACTIONS_TOOL,
                 "Chase transactions from CSV exports",
-                "Lists transactions from the Chase CSV exports the user downloaded, newest first, \
+                "Lists transactions from the Chase CSV exports the user downloaded, newest day first, \
                  with the count and total of everything matching across pages. Use it for what \
                  was spent over a period, on what, or at which merchant. Check data_through, \
                  since nothing later is known, and complete and possible_duplicates before \
@@ -504,7 +505,7 @@ impl<I: Inbox> ChaseTools<I> {
         let category = non_empty(args.category.as_deref());
         let kind = non_empty(args.kind.as_deref());
         let file = non_empty(args.file.as_deref());
-        let page = PageRequest::new(
+        let page = PositionRequest::new(
             &args.list,
             &TransactionsFilter {
                 since: window.since.as_deref(),
@@ -583,8 +584,7 @@ impl<I: Inbox> ChaseTools<I> {
         };
         let mut repeated = 0;
         let mut total_cents: i64 = 0;
-        let mut matched: Vec<TransactionItem> = Vec::new();
-        rows.sort_by(|a, b| b.0.date.cmp(&a.0.date));
+        let mut matched: Vec<(PositionKey, TransactionItem)> = Vec::new();
         for (mut t, name) in rows {
             let key = row_key(&t);
             // Text is masked before a filter sees it, so a filter cannot be used to
@@ -609,7 +609,12 @@ impl<I: Inbox> ChaseTools<I> {
             if holders.get(&key).is_some_and(|h| h.len() > 1) {
                 repeated += 1;
             }
-            matched.push(transaction_item(t, name, detailed));
+            // From the masked text: a cursor must not test digits a result would not show either.
+            let position = PositionKey::new(
+                t.date.as_str(),
+                &format!("{name}|{}|{}", t.amount.amount, t.description),
+            );
+            matched.push((position, transaction_item(t, name, detailed)));
         }
 
         let mut note = Vec::new();
@@ -639,12 +644,16 @@ impl<I: Inbox> ChaseTools<I> {
             complete: skipped == 0 && unreadable.is_empty(),
             possible_duplicates: (repeated > 0).then_some(repeated),
             note: (!note.is_empty()).then(|| note.join(" ")),
-            page: page.page(matched, "since/until, description, category, kind or file")?,
+            page: page.page(
+                matched,
+                Order::Descending,
+                "since/until, description, category, kind or file",
+            )?,
         })
     }
 
     fn exports(&self, args: ExportsArgs) -> Result<ToolOutput, ToolError> {
-        let page = PageRequest::new(
+        let page = PositionRequest::new(
             &args.list,
             &ExportsFilter {
                 recursive: args.recursive,
@@ -655,30 +664,34 @@ impl<I: Inbox> ChaseTools<I> {
         let items = reading
             .exports
             .into_iter()
-            .map(|export| match export.parsed {
-                Some(parsed) => {
-                    let report = parsed.report(&export.name);
-                    ExportItem {
-                        file: export.name,
-                        variant: Some(report.variant),
-                        transactions: report.transactions,
-                        skipped: report.skipped,
-                        since: report.since,
-                        until: report.until,
-                        unreadable: None,
+            .map(|export| {
+                let key = PositionKey::new(export.name.as_str(), &export.name);
+                let item = match export.parsed {
+                    Some(parsed) => {
+                        let report = parsed.report(&export.name);
+                        ExportItem {
+                            file: export.name,
+                            variant: Some(report.variant),
+                            transactions: report.transactions,
+                            skipped: report.skipped,
+                            since: report.since,
+                            until: report.until,
+                            unreadable: None,
+                        }
                     }
-                }
-                None => ExportItem {
-                    file: export.name,
-                    unreadable: Some(true),
-                    ..ExportItem::default()
-                },
+                    None => ExportItem {
+                        file: export.name,
+                        unreadable: Some(true),
+                        ..ExportItem::default()
+                    },
+                };
+                (key, item)
             })
             .collect();
         ToolOutput::new(&ExportsOut {
             csv_files: reading.csv_files,
             chase_exports,
-            page: page.page(items, "recursive")?,
+            page: page.page(items, Order::Ascending, "recursive")?,
         })
     }
 }

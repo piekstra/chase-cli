@@ -130,6 +130,116 @@ fn a_call_cannot_reach_a_file_outside_the_inbox() {
 
 // ---- chase_transactions ----------------------------------------------------------
 
+/// A page boundary falls inside a day, and a newer export lands before the next page.
+#[test]
+fn a_row_that_arrives_between_pages_repeats_nothing_and_skips_nothing() {
+    let row = |date: &str, name: &str| format!("{date},{date},{name},Shopping,Sale,-1.00,\n");
+    let earlier = [
+        row("03/04/2026", "ACME D"),
+        row("03/03/2026", "ACME C"),
+        row("03/03/2026", "ACME B"),
+        row("03/01/2026", "ACME A"),
+    ]
+    .concat();
+    let tools = inbox(
+        "between-pages",
+        &[("a.csv", &format!("{CARD_HEADER}\n{earlier}"))],
+    );
+    let names = |page: &Value| -> Vec<String> {
+        page["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|i| i["description"].as_str().unwrap().to_string())
+            .collect()
+    };
+    let first = ok(&tools, TRANSACTIONS_TOOL, json!({"limit": 2}));
+    let mut seen = names(&first);
+    assert_eq!(seen[0], "ACME D");
+    std::fs::write(
+        tools.inbox.0.join("b.csv"),
+        format!("{CARD_HEADER}\n{}", row("03/05/2026", "ACME E")),
+    )
+    .unwrap();
+    let mut cursor = first["next_cursor"].clone();
+    while cursor.is_string() {
+        let page = ok(
+            &tools,
+            TRANSACTIONS_TOOL,
+            json!({"limit": 2, "cursor": cursor}),
+        );
+        seen.extend(names(&page));
+        cursor = page["next_cursor"].clone();
+    }
+    seen.sort();
+    assert_eq!(seen, ["ACME A", "ACME B", "ACME C", "ACME D"]);
+}
+
+/// A transaction has no id, so two of one day, amount and merchant have one key, and a position tells
+/// them apart by how many it has passed.
+#[test]
+fn identical_rows_across_a_page_boundary_each_come_back() {
+    let row = "03/03/2026,03/03/2026,ACME COFFEE,Food & Drink,Sale,-4.50,\n";
+    let tools = inbox(
+        "identical-rows",
+        &[("a.csv", &format!("{CARD_HEADER}\n{row}{row}{row}"))],
+    );
+    let mut returned = 0;
+    let mut args = json!({"limit": 1});
+    loop {
+        let page = ok(&tools, TRANSACTIONS_TOOL, args.clone());
+        returned += page["returned"].as_u64().unwrap();
+        if !page["next_cursor"].is_string() {
+            break;
+        }
+        args["cursor"] = page["next_cursor"].clone();
+    }
+    assert_eq!(returned, 3);
+}
+
+/// A cursor is readable by whoever holds it, so its row's identity is taken from the masked text.
+#[test]
+fn a_cursor_holds_no_digit_a_result_would_not_show() {
+    let row = |digits: &str| format!("03/03/2026,03/03/2026,ACME {digits},Shopping,Sale,-1.00,\n");
+    let over = |test: &str, digits: &str| {
+        inbox(
+            test,
+            &[(
+                "a.csv",
+                &format!("{CARD_HEADER}\n{}{}", row(digits), row("000000000000")),
+            )],
+        )
+    };
+    let cursor_of = |tools: &ChaseTools<At>| {
+        ok(tools, TRANSACTIONS_TOOL, json!({"limit": 1}))["next_cursor"]
+            .as_str()
+            .unwrap()
+            .to_string()
+    };
+    assert_eq!(
+        cursor_of(&over("masked-one", "111111111234")),
+        cursor_of(&over("masked-two", "222222221234")),
+    );
+}
+
+/// A cursor issued before this version holds a count, and is read as one.
+#[test]
+fn an_earlier_versions_cursor_still_continues_as_the_count_it_holds() {
+    let list: ListArgs = serde_json::from_value(json!({"limit": 1})).unwrap();
+    let page = pk_cli_mcp::PageRequest::new(&list, &ExportsFilter { recursive: false })
+        .unwrap()
+        .page(vec![0, 1, 2], "anything")
+        .unwrap();
+    let cursor = serde_json::to_value(&page).unwrap()["next_cursor"].clone();
+    let all = ok(&tools(), EXPORTS_TOOL, json!({"limit": 200}));
+    let got = ok(
+        &tools(),
+        EXPORTS_TOOL,
+        json!({"limit": 200, "cursor": cursor}),
+    );
+    assert_eq!(got["returned"], all["returned"].as_u64().unwrap() - 1);
+}
+
 #[test]
 fn transactions_come_newest_first_spend_positive() {
     let out = ok(

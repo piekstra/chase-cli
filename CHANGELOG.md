@@ -4,6 +4,13 @@ All notable changes to `chase-cli` are documented here. Newest first. The projec
 follows [SemVer](https://semver.org/); until 1.0, minors carry the breaking-change
 signal.
 
+## 0.2.1 — 2026-11-03
+
+- `chase_transactions` and `chase_exports` page by position, so a row that arrives between pages,
+  from a new export, repeats nothing and skips nothing. Rows of the same day now run in a fixed order
+  of their own. A cursor from an earlier version still works, as the count of rows it holds.
+- cli-common v0.27.0, up from v0.21.0.
+
 ## 0.2.0 — 2026-11-03
 
 - `chse mcp`: read-only tools for Claude, `chase_transactions` and `chase_exports`, over

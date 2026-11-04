@@ -8,7 +8,7 @@ A `piekstra-cli/1` family CLI (binary `chse`) that parses Chase's own CSV
 activity exports into family transaction DTOs. It is a thin layer over the
 shared `pk-cli-*` crates from
 [`cli-common`](https://github.com/piekstra/cli-common), pinned to tag
-**v0.21.0**. Read that repo's `DESIGN.md`, `conformance.md`, and `PROFILES.md`
+**v0.27.0**. Read that repo's `DESIGN.md`, `conformance.md`, and `PROFILES.md`
 before changing the surface — do not reconstruct the spec from memory.
 
 ## The two rules that matter most here
