@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "chse",
   "display_name": "Chase CSV exports (chse)",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Read-only questions over the Chase CSV activity exports you download, through the open-source chse CLI.",
   "long_description": "Ask Claude about the Chase card and bank activity you downloaded as CSV from chase.com: what was spent over a period, on what and at which merchant, and which accounts and dates your files cover. Two read-only tools: chase_transactions and chase_exports. There is no sign-in and no connection to Chase: the tools read only the CSV files in the folder you choose in these settings, so they know nothing later than your last download, and cannot move money or change anything at Chase. A run of 8 or more digits in a description, memo or file name is masked to its last four, except an 8-digit run in a file name that reads as a date, which is left as a date stamp. What the tools return goes to Claude as part of your conversation. Unofficial; not affiliated with or endorsed by JPMorgan Chase & Co.",
   "author": {
