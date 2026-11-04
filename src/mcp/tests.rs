@@ -175,6 +175,28 @@ fn a_row_that_arrives_between_pages_repeats_nothing_and_skips_nothing() {
     assert_eq!(seen, ["ACME A", "ACME B", "ACME C", "ACME D"]);
 }
 
+/// A transaction has no id, so two of one day, amount and merchant have one key, and a position tells
+/// them apart by how many it has passed.
+#[test]
+fn identical_rows_across_a_page_boundary_each_come_back() {
+    let row = "03/03/2026,03/03/2026,ACME COFFEE,Food & Drink,Sale,-4.50,\n";
+    let tools = inbox(
+        "identical-rows",
+        &[("a.csv", &format!("{CARD_HEADER}\n{row}{row}{row}"))],
+    );
+    let mut returned = 0;
+    let mut args = json!({"limit": 1});
+    loop {
+        let page = ok(&tools, TRANSACTIONS_TOOL, args.clone());
+        returned += page["returned"].as_u64().unwrap();
+        if !page["next_cursor"].is_string() {
+            break;
+        }
+        args["cursor"] = page["next_cursor"].clone();
+    }
+    assert_eq!(returned, 3);
+}
+
 /// A cursor is readable by whoever holds it, so its row's identity is taken from the masked text.
 #[test]
 fn a_cursor_holds_no_digit_a_result_would_not_show() {
