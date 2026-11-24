@@ -5,7 +5,7 @@ edition = "2021"
 # pk-cli-auth (cli-common v0.27.0) needs 1.89.
 rust-version = "1.89"
 description = "Offline-first CLI for Chase card and bank activity: parse Chase CSV exports into the piekstra family transaction DTO, and scan a directory for Chase-shaped exports."
-license = "MIT"
+license = "AGPL-3.0-only"
 repository = "https://github.com/piekstra/chase-cli"
 homepage = "https://github.com/piekstra/chase-cli"
 readme = "README.md"
