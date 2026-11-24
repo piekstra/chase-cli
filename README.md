@@ -199,3 +199,9 @@ CLI reports `required: false` / `method: "none"` so drivers need no special
 case; `login`/`logout`/`set-credential` would be surface with nothing behind
 it. They arrive with the first real session — see
 [`docs/api.md` §2](docs/api.md).
+
+## License
+
+Copyright (C) 2026 piekstra. Licensed under the GNU Affero General Public
+License, version 3 only (AGPL-3.0-only); see [LICENSE](LICENSE). Releases up to
+and including v0.2.1 were published under MIT.
